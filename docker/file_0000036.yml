@@ -1,0 +1,126 @@
+name: typeahead
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-typeahead}
+      POSTGRES_USER: ${POSTGRES_USER:-typeahead}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-typeahead}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Three standalone Redis cache nodes. App-level consistent hashing decides
+  # ownership; this is NOT Redis Cluster.
+  # Intentionally NOT published to the host: the backend reaches them over the
+  # internal Docker network, and exposing Redis on a host port invites
+  # cross-protocol (HTTP-on-Redis-port) probes. Inspect with:
+  #   docker compose exec redis-node-1 redis-cli ...
+  redis-node-1:
+    image: redis:7-alpine
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
+    # Cache only: disable RDB snapshots and AOF so Redis never persists to disk.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-node-2:
+    image: redis:7-alpine
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
+    # Cache only: disable RDB snapshots and AOF so Redis never persists to disk.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-node-3:
+    image: redis:7-alpine
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
+    # Cache only: disable RDB snapshots and AOF so Redis never persists to disk.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot job: downloads ORCAS and loads the top 1M queries, then exits.
+  dataset-loader:
+    build: ./dataset-loader
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-typeahead}
+      DB_USER: ${POSTGRES_USER:-typeahead}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-typeahead}
+      TOP_N: ${ORCAS_TOP_N:-1000000}
+      # ORCAS_LOCAL_PATH: /data/orcas.tsv.gz   # set to reuse a pre-downloaded file
+    volumes:
+      - orcasdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build: ../backend
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-typeahead}
+      DB_USER: ${POSTGRES_USER:-typeahead}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-typeahead}
+      REDIS1_HOST: redis-node-1
+      REDIS1_PORT: 6379
+      REDIS2_HOST: redis-node-2
+      REDIS2_PORT: 6379
+      REDIS3_HOST: redis-node-3
+      REDIS3_PORT: 6379
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-node-1:
+        condition: service_healthy
+      redis-node-2:
+        condition: service_healthy
+      redis-node-3:
+        condition: service_healthy
+      dataset-loader:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        # Baked into the Next.js rewrite at build time (see frontend/Dockerfile).
+        BACKEND_URL: http://backend:8080
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  pgdata:
+  orcasdata:

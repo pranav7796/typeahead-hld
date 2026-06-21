@@ -1,0 +1,18 @@
+# Copy to `.env` and adjust if these host ports are already in use locally.
+# These only affect the host-published ports (bound to 127.0.0.1), not internal
+# service networking. Redis is intentionally not published to the host.
+
+POSTGRES_HOST_PORT=5432
+BACKEND_HOST_PORT=8080
+FRONTEND_HOST_PORT=3000
+
+# Platform for images/builds. Use linux/amd64 on typical Docker Desktop for Windows.
+DOCKER_PLATFORM=linux/amd64
+
+# Shared DB settings used by postgres, backend and dataset loader.
+POSTGRES_DB=typeahead
+POSTGRES_USER=typeahead
+POSTGRES_PASSWORD=typeahead
+
+# Loader sizing (top N ORCAS queries to import).
+ORCAS_TOP_N=1000000

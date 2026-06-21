@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: typeahead-backend
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:typeahead}
+    username: ${DB_USER:typeahead}
+    password: ${DB_PASSWORD:typeahead}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Schema is owned by the Postgres initdb script (single source of truth).
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 500
+        order_inserts: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# Three standalone Redis cache nodes. App-level consistent hashing routes
+# each prefix to exactly one node (never round-robin).
+typeahead:
+  redis:
+    nodes:
+      - id: node-1
+        host: ${REDIS1_HOST:localhost}
+        port: ${REDIS1_PORT:6379}
+      - id: node-2
+        host: ${REDIS2_HOST:localhost}
+        port: ${REDIS2_PORT:6380}
+      - id: node-3
+        host: ${REDIS3_HOST:localhost}
+        port: ${REDIS3_PORT:6381}

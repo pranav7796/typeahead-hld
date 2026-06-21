@@ -1,0 +1,17 @@
+# Debian base gives us GNU sort (disk-backed external sort for the 3.6 GB file)
+# plus psql, curl and gzip.
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-client \
+        curl \
+        gzip \
+        ca-certificates \
+        coreutils \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY load_orcas.sh /usr/local/bin/load_orcas.sh
+RUN chmod +x /usr/local/bin/load_orcas.sh
+
+ENTRYPOINT ["/usr/local/bin/load_orcas.sh"]
